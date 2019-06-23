@@ -1,0 +1,180 @@
+---
+title: "Project 1"
+author: "Jerome Dennis Kaypee"
+date: "22 June 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+
+df<- read.csv("F:/Big Data Analytics YorkU/Course 5/Week 1/Project 1/BikeShare.csv")
+
+#Renaming the columns in the CSV
+
+names(df) <- c("TripNo", "TripDuration","StartTime","StopTime","StartStationID","StartStation","StartStationLat","StartStationLon","EndStationID","EndStation","EndStationLat","EndStationLon","BikeId","UseType","BirthYear","Gender","TripDuration")
+View(df)
+
+#sorting by Bike 
+df$BikeId <- as.numeric(df$BikeId)
+df_sorted <- df[order(df$BikeId),]
+
+View(df_sorted)
+
+#check to see if there are any NA vaules in  the file
+
+any(is.na(df_sorted))
+#there aren't any NA values
+
+
+install.packages("plyr", dependencies= TRUE)
+if(sessionInfo()['basePkgs']=="dplyr" | sessionInfo()['otherPkgs']=="dplyr"){
+  detach(package:dplyr, unload=TRUE)
+}
+library(plyr)
+library(dplyr)
+library(arules)
+library(arulesViz)
+library(ggplot2)
+
+#removing the Null values from the BirthYear column
+df_nonull<-subset(df_sorted, df_sorted$BirthYear!='NULL')
+
+View(df_nonull)
+str(df_nonull)
+
+# Casting the BirthYear column as numeric so that it is easier to filter
+df_nonull$BirthYear<-as.numeric(as.character(df_nonull$BirthYear))
+min(df_nonull$BirthYear)
+max(df_nonull$BirthYear)
+View(df_nonull)
+
+# Selecting birth years between 1960 and 1999
+
+df_targetYears<-subset(df_nonull, df_nonull$BirthYear>='1960')
+df_targetYears<-subset(df_targetYears, df_targetYears$BirthYear<'2000')
+
+View(df_targetYears)
+min(df_targetYears$BirthYear)
+max(df_targetYears$BirthYear)
+
+#Creating a new factor variable called BirthDecade
+df_targetDecades<-df_targetYears
+df_targetDecades$BirthDecade<-NA
+View(df_targetDecades)
+
+#checking for gender values other than 1(male) or 2(female)
+min(df_targetDecades$Gender)
+max(df_targetDecades$Gender)
+
+str(df_targetDecades)
+
+#removing the gender values 0
+df_targetDecades<-subset(df_targetDecades,df_targetDecades$Gender!=0)
+
+min(df_targetDecades$StartStationID)
+max(df_targetDecades$StartStationID)
+
+#Looking for off values under the Station IDs
+min(df_targetDecades$EndStationID)
+max(df_targetDecades$EndStationID)
+
+
+df_targetDecades<-subset(df_targetDecades,df_targetDecades$EndStationID>=min(df_targetDecades$StartStationID))
+df_targetDecades<-subset(df_targetDecades,df_targetDecades$EndStationID<=max(df_targetDecades$StartStationID))
+
+View(df_targetDecades)
+
+#the Trip ID should be distinct, and so removing duplicates
+
+df_distTripNo<-df_targetDecades%>%
+                distinct(TripNo, .keep_all=TRUE)
+View(df_distTripNo)
+
+#Filling in the values for the BirthDecade
+
+for (i in 1:length(df_distTripNo$BirthYear))
+{
+  if(df_distTripNo$BirthYear[i]>='1960' &&          df_distTripNo$BirthYear[i]<'1970')
+  {
+  df_distTripNo$BirthDecade[i]<-'60s'
+  }
+  else if(df_distTripNo$BirthYear[i]>='1970' &&     df_distTripNo$BirthYear[i]<'1980')
+  {
+  df_distTripNo$BirthDecade[i]<-'70s'
+  }
+  else if(df_distTripNo$BirthYear[i]>='1980' &&     df_distTripNo$BirthYear[i]<'1990')
+  {
+  df_distTripNo$BirthDecade[i]<-'80s'
+  }
+  else 
+  {
+  df_distTripNo$BirthDecade[i]<-'90s'
+  }
+}
+
+View(df_distTripNo)
+
+write.csv(df_distTripNo,"F:/Big Data Analytics YorkU/Course 5/Week 1/Project 1/citibike-tripdata.csv/bikeData_cleaned.csv")
+
+#Turning the target variables into factors so that it can be used with APRIORI
+
+df_distTripNo$BirthDecade<-as.factor(df_distTripNo$BirthDecade)
+df_distTripNo$Gender<-as.factor(df_distTripNo$Gender)
+df_distTripNo$StartStationID<-as.factor(df_distTripNo$StartStationID)
+df_distTripNo$EndStationID<-as.factor(df_distTripNo$EndStationID)
+
+#Creating a new Dataframe with just the target variables
+
+df_final<-df_distTripNo%>%
+          select(StartStationID,EndStationID,Gender,BirthDecade)
+
+#creating a Transactions Class from the Dataframe
+
+df_final<- as(df_final, "transactions")
+View(df_final)
+
+
+
+rules<-apriori(df_final,parameter=list(support=0.0009,confidence=0.89))
+
+rules
+redundant_rules<-is.redundant(rules)
+redundant_rules
+
+plot(rules)
+summary(rules)
+head(rules)
+inspectDT(rules)
+inspect(sort(rules[1:10], by = 'lift'))
+
+plot(rules[1:10], method = 'graph')
+
+plot(rules[1:10], method = "grouped", control = list(k = 5))
+plot(rules[1:10], method="graph", control=list(type="items"))
+plot(rules[1:10], method="paracoord",  control=list(alpha=.5, reorder=TRUE))
+
+labels(df_final)
+
+rules_60s<-apriori(df_final,parameter=list(support=0.0009,confidence=0.89), appearance = list(default="rhs",lhs="StartStationID=3225"))
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
