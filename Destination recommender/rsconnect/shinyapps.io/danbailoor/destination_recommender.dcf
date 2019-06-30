@@ -1,0 +1,12 @@
+name: destination_recommender
+title: Destination recommender
+username:
+account: danbailoor
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 994749
+bundleId: 2185175
+url: https://danbailoor.shinyapps.io/Destination_Recommender/
+when: 1561708603.79728
+asMultiple: FALSE
+asStatic: FALSE
