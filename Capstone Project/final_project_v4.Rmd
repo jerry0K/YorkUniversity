@@ -1,0 +1,540 @@
+---
+title: "STA"
+author: "Jerome Dennis Kaypee"
+date: "7 September 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r STA}
+rm(list=ls()) 
+
+library(forecast)
+library(tseries)
+library(zoo)
+library(psych)
+library(caret)
+library(Hmisc)
+library(ggplot2)
+library(vars)
+library(XLConnect)
+library(xlsx)
+library(dplyr)
+library(ggpubr)
+library(tidyr)
+library(lubridate)
+library(ppls)
+library(BBmisc)
+
+#theme_set(theme_pubr())
+
+STA_df_1 <- read.csv("F:/Big Data Analytics YorkU/Course 6/Final Project/yorku_sta_data.csv", na.strings = c("", "NA"))
+#View(STA_df_1)
+
+#any(is.na(STA_df_1))
+
+colSums(is.na(STA_df_1))
+
+STA_df_2<-STA_df_1[-c(1)]
+#View(STA_df_2)
+
+STA_df_3<-na.omit(STA_df_2)
+#View(STA_df_3)
+
+any(is.na(STA_df_3))
+
+Count_df <- STA_df_3 %>%
+  group_by(STA_df_3$Directional.City.Pair) %>%
+  summarise(counts = n())
+
+#View(Count_df)
+
+#show.legend(FALSE)
+
+#ar(mar=c(1, 1, 1, 1))
+#gplot(Count_df, aes(x = STA_df_3$Directional.City.Pair, y = counts, length=1)) +
+# geom_bar(fill = "#0073C2FF", stat = "identity") +
+# geom_text(aes(label = counts), vjust = -0.3, show.legend=FALSE) + 
+# theme_pubclean()
+    
+#gplot(data = Count_df, aes_string(x = "STA_df_3$Directional.City.Pair", y = #counts")) + 
+# geom_boxplot()
+
+plot(Count_df)
+
+#STA_df_3
+
+STA_df_4<- STA_df_3 %>% separate(Directional.City.Pair, c("Start", "End"), "-")
+
+#View(STA_df_4)
+
+#SALE_df <- STA_df_3 %>%
+# select(STA_df_3$Transaction.Type, starts_with("S"))
+
+
+#SALE_df<-subset(STA_df_3, STA_df_3$Transaction.Type ='Sale')
+  #summarise(counts = n())
+SALE_df<-filter(STA_df_3, Transaction.Type=="Sale")
+
+STA_df_4<- SALE_df%>% separate(Directional.City.Pair, c("Start", "End"), "-")
+#View(SALE_df)
+#View(STA_df_4)
+
+any(is.null(STA_df_4))
+STA_df_4[STA_df_4==""]<-NA
+any(is.null(STA_df_4))
+
+#STA_df_5<-data.frame("Invoice_Number", "True_Origin","True_Destination")
+
+
+#dropping columns that ar enot needed
+STA_df_6<-STA_df_4[-c(5, 7, 13, 16,19,22,23,26)]
+
+
+
+#View (STA_df_4)
+
+#renaming the column for ease of use
+names(STA_df_6) <- c("issue_date", "invoice_number","pnr","ticket_number","airline","start","end","connection","segment_leg","class","departure_city","departure_date","arrival_city","arrival_date","flight_time","transaction_type","total_fare","segment_miles")
+
+
+#removing duplicate rows
+
+STA_df_6<-distinct(STA_df_6)
+STA_df_6$ticket_number<-as.numeric(STA_df_6$ticket_number)
+STA_df_6<-STA_df_6[order(STA_df_6$ticket_number),]
+View (STA_df_6)
+
+#Creating the dataframe for stressors
+
+#1 dataframe for flight distance 
+STA_df_miles<-aggregate(segment_miles~ticket_number,STA_df_6,sum)
+
+#2 Dataframe for replacing the class of travel
+
+STA_df_fare<-aggregate(total_fare~ticket_number,STA_df_6,mean)
+
+class(STA_df_6$issue_date)
+
+
+STA_df_6$issue_date<-as.Date(STA_df_6$issue_date,format = "%m/%d/%Y")
+STA_df_6$departure_date<-as.Date(STA_df_6$departure_date,format = "%m/%d/%Y")
+STA_df_6$arrival_date<-as.Date(STA_df_6$arrival_date,format = "%m/%d/%Y")
+
+
+
+STA_df_dates_departure<-aggregate(cbind(issue_date,departure_date)~ticket_number,STA_df_6,min)
+STA_df_dates_arrival<-aggregate(arrival_date~ticket_number,STA_df_6,max)
+
+#class(STA_df_dates$issue_date)
+STA_df_dates_departure$issue_date<-as.Date(STA_df_dates_departure$issue_date)
+STA_df_dates_departure$departure_date<-as.Date(STA_df_dates_departure$departure_date)
+STA_df_dates_arrival$arrival_date<-as.Date(STA_df_dates_arrival$arrival_date)
+
+View (STA_df_dates_departure)
+View (STA_df_dates_arrival)
+
+STA_df_dates<-merge(STA_df_dates_departure, STA_df_dates_arrival, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+View (STA_df_dates)
+
+STA_df_dates$triplength<-NA
+STA_df_dates$triplength<-difftime(STA_df_dates$arrival_date,     STA_df_dates$departure_date, units = "days")
+
+STA_df_dates$adv_notice<-difftime(STA_df_dates$departure_date,     STA_df_dates$issue_date, units = "days")
+View(STA_df_dates)
+STA_df_notice<-STA_df_dates[-c(2,3,4,5)]
+class(STA_df_notice$adv_notice)
+STA_df_notice$adv_notice<-as.numeric(STA_df_notice$adv_notice)
+STA_df_notice$adv_notice<-abs(STA_df_notice$adv_notice+1)
+
+#day of the week
+STA_df_notice$day<-strftime(STA_df_dates$departure_date,'%A')
+STA_df_notice$month<-strftime(STA_df_dates$departure_date,'%b')
+
+#advanced notice dataframe
+View(STA_df_notice)
+
+#finding the average connections per trip type
+
+
+STA_df_6$connection<-as.character( STA_df_6$connection)
+STA_df_6$connection[1]
+STA_df_6$segment_leg<-as.numeric(STA_df_6$segment_leg)
+STA_df_6$segment_leg[1]
+class(STA_df_6$ticket_number)
+
+
+STA_df_6$trip_type[1]<-1
+for (i in 2:length(STA_df_6$ticket_number)){
+  if (STA_df_6$ticket_number[i]==STA_df_6$ticket_number[i-1]  && STA_df_6$connection[i]=='O' && STA_df_6$segment_leg[i]>1){
+    STA_df_6$trip_type[i]<-2
+  }else{
+    STA_df_6$trip_type[i]<-1
+  }
+  
+}
+STA_df_connections<-aggregate(cbind(segment_leg,trip_type)~ticket_number,STA_df_6,max)
+STA_df_connections$number_of_connections<-STA_df_connections$segment_leg/STA_df_connections$trip_type
+STA_df_connections<-STA_df_connections[-c(2,3)]
+View (STA_df_connections)
+
+#aggregating the trip typr by ticket number, 1 indicates a one way trip and 2 a round trip
+STA_df_type<-aggregate(trip_type~ticket_number,STA_df_6,max)
+View(STA_df_type)
+
+STA_df_miles<-merge(STA_df_miles, STA_df_type, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+#oneway trip distance
+STA_df_miles$trip_dist<-STA_df_miles$segment_miles/STA_df_miles$trip_type
+STA_df_miles<-STA_df_miles[-c(2,3)]
+View(STA_df_miles)
+
+
+STA_df_class_levels<-STA_df_dates_departure<-aggregate(total_fare~class,STA_df_6,mean)
+
+View(STA_df_class_levels)
+
+
+STA_df_6$class<-as.character( STA_df_6$class)
+
+for (i in 1:length(STA_df_6$ticket_number)){
+  if (STA_df_6$class[i]=='UNKN'){
+    if (STA_df_6$total_fare>0 && STA_df_6$total_fare<800){
+      STA_df_6$class[i]<-'Coach'
+    }
+    else if (STA_df_6$total_fare>=800 && STA_df_6$total_fare<1250){
+      STA_df_6$class[i]<-'Premium'
+    }
+    else if (STA_df_6$total_fare>=1250 && STA_df_6$total_fare<2000){
+      STA_df_6$class[i]<-'First'
+    }
+    else{
+      STA_df_6$class[i]<-'Business'
+    }
+  }
+  
+}
+
+STA_df_class_levels<-aggregate(cbind(segment_miles,total_fare)~class,STA_df_6,sum)
+STA_df_class_levels$avg_cost<-STA_df_class_levels$total_fare/STA_df_class_levels$segment_miles
+
+View(STA_df_class_levels)
+
+
+
+
+for (i in 1:length(STA_df_6$ticket_number)){
+ 
+    if (STA_df_6$class[i]=='Coach'){
+      STA_df_6$class_level[i]<-0.6825535
+    }
+    else if (STA_df_6$class[i]=='Business'){
+      STA_df_6$class_level[i]<-1.7078353
+    }
+    else if (STA_df_6$class[i]=='First'){
+      STA_df_6$class_level[i]<-1.4861706
+    }
+    else{
+      STA_df_6$class_level[i]<-0.8849252
+    }
+  
+}
+
+View (STA_df_6)
+
+STA_df_class_test<-aggregate(class_level~class,STA_df_6,mean)
+
+View(STA_df_class_test)
+
+STA_df_class<-aggregate(class_level~ticket_number,STA_df_6,mean)
+
+#creating the dataframe for the class of travel stressor
+
+
+View(STA_df_class)
+
+STA_df_terminal<-data.frame(ticket_number=numeric(), origin=character())
+
+de<-list(STA_df_6$ticket_number[1],STA_df_6$start[1])
+STA_df_terminal = rbind(STA_df_terminal,de, stringsAsFactors=FALSE)
+
+for (i in 2:length(STA_df_6$start)){
+  if (STA_df_6$ticket_number[i]!=STA_df_6$ticket_number[i-1]){
+    
+    de<-list(STA_df_6$ticket_number[i],STA_df_6$start[i])
+    STA_df_terminal = rbind(STA_df_terminal,de, stringsAsFactors=FALSE)
+    
+  }
+}
+
+View(STA_df_terminal)
+names(STA_df_terminal)<-c("ticket_number","origin")
+write.csv(STA_df_terminal,"F:/Big Data Analytics YorkU/Course 6/Final Project/STA_df_terminal.csv")
+
+
+View(STA_df_6)
+
+STA_df_destination<-data.frame(ticket_number=numeric(), destination=character())
+STA_df_terminal$destination<-NA
+class(STA_df_6$segment_leg)
+class(STA_df_6$connection)
+class(STA_df_6$trip_type)
+k<-1
+for (i in 1:length(STA_df_6$issue_date)){
+  
+   if(STA_df_6$connection[i]=='O' && STA_df_6$segment_leg[i]>1){
+    #STA_df_terminal$destination[k]<-STA_df_6$start[i]
+    de<-list(STA_df_6$ticket_number[i],STA_df_6$start[i])
+    STA_df_destination = rbind(STA_df_destination,de, stringsAsFactors=FALSE)
+    
+   }
+  else if (STA_df_6$ticket_number[i]!=STA_df_6$ticket_number[i+1] && STA_df_6$connection[i]=="O" && STA_df_6$segment_leg==1){
+  
+  #STA_df_terminal$destination[k]<-STA_df_6$end[i]
+  de<-list(STA_df_6$ticket_number[i],STA_df_6$end[i])
+    STA_df_destination = rbind(STA_df_destination,de, stringsAsFactors=FALSE)
+  
+  
+  }
+}
+View(STA_df_destination)
+
+#colSums(is.na(STA_df_terminals))
+
+names(STA_df_destination)<-c("ticket_number","destination")
+
+STA_df_terminals<-merge(STA_df_terminal, STA_df_destination, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+View (STA_df_terminals)
+
+write.csv(STA_df_terminals,"F:/Big Data Analytics YorkU/Course 6/Final Project/STA_df_terminals.csv")
+
+STA_df_terminals<-STA_df_terminals[-c(3)]
+
+names(STA_df_terminals) <- c("ticket_number","origin","destination")
+
+write.csv(STA_df_terminals,"F:/Big Data Analytics YorkU/Course 6/Final Project/STA_df_terminals.csv")
+
+rm(STA_df_final)
+
+#merging the advance purchase and true terminals 
+#rm(STA_df_final)
+STA_df_final<-merge(STA_df_terminals, STA_df_notice, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+
+View(STA_df_final)
+
+STA_df_final<-merge(STA_df_final, STA_df_class, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+#plot(STA_df_final$class_level)
+View(STA_df_final)
+
+STA_df_final<-merge(STA_df_final, STA_df_miles, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+View(STA_df_final)
+
+#rm(test, test1, test2)
+
+STA_df_final<-merge(STA_df_final, STA_df_connections, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+
+
+View(STA_df_final)
+
+#finding the net change in time per trip to estimate jetlag
+
+airport_long<- read.csv("F:/Big Data Analytics YorkU/Course 6/Final Project/airport_timezones.csv", na.strings = c("", "NA"))
+
+airport_long<-airport_long[c(5,8)]
+View(airport_long)
+class(airport_long$Airport_Code)
+class(STA_df_terminals$origin)
+airport_long$Airport_Code<-as.character(airport_long$Airport_Code)
+
+
+View(airport_long)
+
+STA_df_long<-merge(STA_df_terminals, airport_long, by.x="origin",by.y = "Airport_Code",sort = TRUE)
+
+names(STA_df_long) <- c("origin","ticket_number","destination","origin_lon")
+STA_df_long<-merge(STA_df_long, airport_long, by.x="destination",by.y = "Airport_Code",sort = TRUE)
+
+View(STA_df_long)
+names(STA_df_long) <- c("origin","destination","ticket_number","origin_lon","destination_lon")
+STA_df_long$origin_lon<-as.numeric(STA_df_long$origin_lon)
+STA_df_long$destination_lon<-as.numeric(STA_df_long$destination_lon)
+
+STA_df_long$tme_diff<-abs(STA_df_long$destination_lon-STA_df_long$origin_lon)
+
+STA_df_long<-STA_df_long[c(3,6)]
+STA_df_long<-aggregate(tme_diff~ticket_number,STA_df_long,mean)
+
+#merging the time difference in to the final dataframe
+STA_df_final<-merge(STA_df_final, STA_df_long, by="ticket_number")
+
+View(STA_df_final)
+
+#To add in the airline information
+STA_df_airline<-STA_df_6[c(4,5)]
+View(STA_df_airline)
+
+#STA_df_airline<-aggregate(airline~ticket_number,STA_df_airline,median)
+STA_df_final<-merge(STA_df_final, STA_df_airline, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+View(STA_df_final)
+STA_df_final<-distinct(STA_df_final)
+
+rm(STA_df_delay)
+#Adding the Delay Information
+STA_df_delay<-read.csv("F:/Big Data Analytics YorkU/Course 6/Final Project/sta_delay5.csv")
+
+View(STA_df_delay)
+
+STA_df_delay<-STA_df_delay[c(6,44)]
+
+
+STA_df_delay[STA_df_delay==""]<-NA
+
+STA_df_delay$Ticket<-as.numeric(STA_df_delay$Ticket)
+STA_df_delay<-STA_df_delay[order(STA_df_delay$Ticket),]
+View (STA_df_delay)
+
+names(STA_df_delay) <- c("ticket_number","total_delay")
+
+STA_df_delay$total_delay<-as.character(STA_df_delay$total_delay)
+
+STA_df_delay[STA_df_delay=="NULL"]<-NA
+
+View(STA_df_delay)
+
+STA_df_delay<-na.omit(STA_df_delay)
+
+STA_df_delay$total_delay<-as.numeric(STA_df_delay$total_delay)
+
+
+STA_df_delay<-aggregate(total_delay~ticket_number,STA_df_delay,sum)
+
+STA_df_delay<-STA_df_delay[which(STA_df_delay$total_delay>=-60 & STA_df_delay$total_delay<4000),]
+
+View(STA_df_delay)
+
+STA_df_delay<-merge(STA_df_delay, STA_df_type, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+
+STA_df_delay$avg_delay<-STA_df_delay$total_delay/STA_df_delay$trip_type
+
+STA_df_delay<-STA_df_delay[c(1,4)]
+
+
+STA_df_final<-merge(STA_df_final, STA_df_delay, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+
+View(STA_df_final)
+
+STA_df_bkup<-STA_df_final
+
+#finding the importance of days
+STA_df_bkup$cnt<-1
+View(STA_df_bkup)
+STA_df_days<-aggregate(cnt~day,STA_df_bkup,sum)
+View(STA_df_days)
+
+STA_df_final$day<-as.character(STA_df_final$day)
+for (i in 1:length(STA_df_final$ticket_number)){
+ 
+    if (STA_df_final$day[i]=='Monday'){
+      STA_df_final$day_wt[i]<-2805
+    }
+    else if (STA_df_final$day[i]=='Tuesday'){
+      STA_df_final$day_wt[i]<-3437
+    }
+    else if (STA_df_final$day[i]=='Wednesday'){
+      STA_df_final$day_wt[i]<-2569
+    }
+    else if (STA_df_final$day[i]=='Thursday'){
+      STA_df_final$day_wt[i]<-5288
+    }
+    else if (STA_df_final$day[i]=='Friday'){
+      STA_df_final$day_wt[i]<-8719
+    }
+    else if (STA_df_final$day[i]=='Saturday'){
+      STA_df_final$day_wt[i]<-3590
+    }
+    else{
+      STA_df_final$day_wt[i]<-3897
+    }
+  
+}
+
+View(STA_df_final)
+
+STA_df_final$day_wt<-1/STA_df_final$day_wt
+for(i in 1:length(STA_df_final$adv_notice)){
+  if(STA_df_final$adv_notice[i]==0){
+    STA_df_final$adv_notice[i]<-1
+  }
+}
+
+STA_df_final$adv_notice<-1/STA_df_final$adv_notice
+class(STA_df_final$notice_nr)
+STA_df_final$class_level<-1/STA_df_final$class_level
+length(STA_df_final$notice_nr)
+
+colSums(is.na(STA_df_final))
+STA_df_final<-na.omit(STA_df_final)
+
+STA_df_final$day_nr<-normalize(STA_df_final$day_wt, method = "range", range = c(0.1, 1), margin = 1L, on.constant = "quiet")
+STA_df_final$notice_nr<-normalize(STA_df_final$adv_notice, method = "range", range = c(0, 1), margin = 1L, on.constant = "quiet")
+STA_df_final$class_nr<-normalize(STA_df_final$class_level, method = "range", range = c(0.1, 1), margin = 1L, on.constant = "quiet")
+STA_df_final$delay_nr<-normalize(STA_df_final$avg_delay, method = "range", range = c(-1, 1), margin = 1L, on.constant = "quiet")
+STA_df_final$connection_nr<-normalize(STA_df_final$number_of_connections, method = "range", range = c(0, 1), margin = 1L, on.constant = "quiet")
+STA_df_final$time_diff_nr<-normalize(STA_df_final$tme_diff, method = "range", range = c(0, 1), margin = 1L, on.constant = "quiet")
+
+
+STA_df_final_bk<-STA_df_final
+#STA_df_final<-STA_df_final_bk
+View(STA_df_final)
+
+colSums(is.na(STA_df_final))
+
+STA_df_final[STA_df_final=="NULL"]<-NA
+STA_df_final[STA_df_final==""]<-NA
+
+class(STA_df_final$destination)
+
+STA_df_final<-STA_df_final[which(STA_df_final$trip_dist>=100),]
+STA_df_final<-STA_df_final[which(STA_df_final$origin!=STA_df_final$destination),]
+
+
+write.csv(STA_df_final,"F:/Big Data Analytics YorkU/Course 6/Final Project/final_df.csv")
+
+STA_df_time<-read.csv("F:/Big Data Analytics YorkU/Course 6/Final Project/timedata.csv", na.strings = c("", "NA"))
+
+View(STA_df_time)
+
+STA_df_time[STA_df_time==""]<-NA
+
+STA_df_time$Ticket<-as.numeric(STA_df_time$Ticket)
+STA_df_time<-STA_df_time[order(STA_df_time$Ticket),]
+View (STA_df_time_ag)
+STA_df_time<-STA_df_time[which(STA_df_time$Connection=='O'),]
+STA_df_time_ag<-aggregate(Inconvenient_Time_Score~Ticket,STA_df_time,mean)
+
+names(STA_df_time_ag)<-c("ticket_number","time_score")
+
+STA_df_final<-merge(STA_df_final, STA_df_time_ag, by.x="ticket_number",by.y = "ticket_number",sort = TRUE)
+View(test)
+
+write.csv(STA_df_final,"F:/Big Data Analytics YorkU/Course 6/Final Project/final_df.csv")
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

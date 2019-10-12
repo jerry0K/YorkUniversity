@@ -1,0 +1,190 @@
+---
+title: "Untitled"
+author: "Jerome Dennis Kaypee"
+date: "01/10/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(BBmisc)
+library(arm)
+
+class<-73
+delays<-72
+adv_notice<-63
+day_of_week<-61
+connections<-61
+jet_lag<-49
+incon_time<-
+
+CWT_stressor_wt<-data.frame("stressor"=c(class,delays,adv_notice,day_of_week,connections,jet_lag))
+
+
+CWT_stressor_wt$weights<-normalize(CWT_stressor_wt$stressor, method = "range", range = c(0.25,0.90), margin = 1L, on.constant = "quiet")
+
+View(CWT_stressor_wt)
+
+STA_df_score <- read.csv("F:/Big Data Analytics YorkU/Course 6/Final Project/final_df.csv", na.strings = c("", "NA"))
+STA_df_score<-STA_df_score[-c(1)]
+View(STA_df_score)
+str(STA_df_score)
+
+
+STA_df_score$score<- STA_df_score$day_nr*CWT_stressor_wt$weights[4] +STA_df_score$notice_nr*CWT_stressor_wt$weights[3] +STA_df_score$class_nr*CWT_stressor_wt$weights[1] +STA_df_score$delay_nr*CWT_stressor_wt$weights[2] +STA_df_score$connection_nr*CWT_stressor_wt$weights[5] +STA_df_score$time_diff_nr*CWT_stressor_wt$weights[6]
+
+STA_df_score$score_nr<-normalize(STA_df_score$score, method = "range", range = c(0.0,1.0), margin = 1L, on.constant = "quiet")
+
+
+
+#corrplot(STA_df_score)
+#Dummy Coding the airline
+
+STA_df_score$airline_dum<-as.numeric(STA_df_score$airline)
+
+STA_df_airline<-aggregate(airline_dum~airline,STA_df_score,mean)
+View(STA_df_airline)
+
+STA_df_airline$airline<-as.character(STA_df_airline$airline)
+
+#Dummy Coding the origin
+STA_df_score$origin_dum<-as.numeric(STA_df_score$origin)
+STA_df_origin<-aggregate(origin_dum~origin,STA_df_score,mean)
+View(STA_df_origin)
+
+#Dummy Coding the origin
+STA_df_score$destination_dum<-as.numeric(STA_df_score$destination)
+STA_df_destination<-aggregate(destination_dum~destination,STA_df_score,mean)
+View(STA_df_destination)
+#Models
+
+model1<-lm(trip_dist~origin_dum+destination_dum+number_of_connections,data=STA_df_score)
+
+model2<-lm(avg_delay~0+airline_dum+day+number_of_connections+month,data=STA_df_score)
+
+model3<-lm(score_nr~0+adv_notice+class_level+tme_diff+avg_delay+trip_dist,data=STA_df_score)
+
+
+ScorePrediction<-function(Origin,Destination,Airline,Day,Adv_notice,Class_level,Tme_diff,Month,Conns){
+  
+  Origin_dum<-STA_df_origin[which(STA_df_origin$origin==Origin),]
+  Destination_dum<-STA_df_destination[which(STA_df_destination$destination==Destination),]
+  
+  Trip_Dist<-predict.lm(model1,list(origin_dum=Origin_dum$origin_dum[1],destination_dum=Destination_dum$destination_dum[1],number_of_connections=Conns))
+  
+ 
+  Airline_dum<-STA_df_airline[which(STA_df_airline$airline==Airline),]
+  
+  Avg_delay<-predict.lm(model2,list(airline_dum=Airline_dum$airline_dum[1], day=Day,number_of_connections=Conns,month=Month))
+  
+  Adv_notice<-1/(Adv_notice+1)
+  
+  Score<-predict.lm(model3,list(adv_notice=Adv_notice, class_level= Class_level, tme_diff=Tme_diff, avg_delay=Avg_delay,trip_dist=Trip_Dist))                     
+ 
+   return(c(Trip_Dist,Avg_delay,Score))
+  
+}
+
+ScorePrediction('YYZ','LAX','F9','Friday',2,0.5855366,6.436386,'Dec',1)
+
+summary(model2)
+
+plot(model1)
+
+plot(model2)
+
+plot(model3)
+
+set.seed(100)  # setting seed to reproduce results of random sampling
+trainingRowIndex <- sample(1:nrow(STA_df_score), 0.8*nrow(STA_df_score))  # row indices for training data
+trainingData <- STA_df_score[trainingRowIndex, ]  # model training data
+testData  <- STA_df_score[-trainingRowIndex, ]   # test data
+
+
+rm(actuals_preds,correlation_accuracy)
+#testing model 1
+distPred <- predict(model1, testData)
+
+actuals_preds1 <- data.frame(cbind(actuals=testData$trip_dist, predicteds=distPred))  # make actuals_predicteds dataframe.
+correlation_accuracy1 <- cor(actuals_preds1) 
+
+min_max_accuracy_1 <- mean(apply(actuals_preds1, 1, min) / apply(actuals_preds1, 1, max))  
+
+mape_1 <- mean(abs((actuals_preds1$predicteds - actuals_preds1$actuals))/actuals_preds1$actuals) 
+
+min_max_accuracy_1
+mape_1
+
+#Testing Model 2
+
+delayPred <- predict(model2, testData)
+
+actuals_preds2 <- data.frame(cbind(actuals=testData$avg_delay, predicteds=delayPred))  # make actuals_predicteds dataframe.
+View(actuals_preds2)
+correlation_accuracy2 <- cor(actuals_preds2) 
+
+min_max_accuracy_2 <- mean(apply(actuals_preds2, 1, min) / apply(actuals_preds2, 1, max))  
+
+mape_2 <- mean(abs((actuals_preds2$predicteds - actuals_preds2$actuals))/actuals_preds2$actuals) 
+
+min_max_accuracy_2
+mape_2
+
+# Testing Model 3
+
+scorePred <- predict(model3, testData)
+
+actuals_preds3 <- data.frame(cbind(actuals=testData$score_nr, predicteds=scorePred))  # make actuals_predicteds dataframe.
+View(actuals_preds3)
+correlation_accuracy3 <- cor(actuals_preds3) 
+
+min_max_accuracy_3 <- mean(apply(actuals_preds3, 1, min) / apply(actuals_preds3, 1, max))  
+
+mape_3 <- mean(abs((actuals_preds3$predicteds - actuals_preds3$actuals))/actuals_preds3$actuals) 
+
+min_max_accuracy_3
+mape_3
+
+summary(model3)
+AIC(model3)
+
+#Testing a GLM model
+
+model3_glm<-glm(score_nr~0+adv_notice+class_level+tme_diff+avg_delay+trip_dist,data=STA_df_score)
+
+scorePredg <- predict(model3_glm, testData)
+
+actuals_predsg <- data.frame(cbind(actuals=testData$score_nr, predicteds=scorePredg))  # make actuals_predicteds dataframe.
+View(actuals_predsg)
+correlation_accuracyg <- cor(actuals_predsg) 
+
+min_max_accuracy_g <- mean(apply(actuals_predsg, 1, min) / apply(actuals_predsg, 1, max))  
+
+mape_g <- mean(abs((actuals_predsg$predicteds - actuals_predsg$actuals))/actuals_predsg$actuals) 
+
+min_max_accuracy_g
+mape_g
+
+summary(model3_glm)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
